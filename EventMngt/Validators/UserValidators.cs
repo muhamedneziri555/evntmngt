@@ -36,7 +36,7 @@ public class LoginDTOValidator : AbstractValidator<LoginDTO>
     public LoginDTOValidator()
     {
         RuleFor(x => x.UserName)
-            .NotEmpty().WithMessage("User name is required");
+            .NotEmpty().WithMessage("Email or username is required");
 
         RuleFor(x => x.Password)
             .NotEmpty().WithMessage("Password is required");

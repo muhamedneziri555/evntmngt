@@ -11,6 +11,7 @@ using System.Globalization;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using System.Reflection;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,6 +22,17 @@ CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
+
+// Add CORS
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(builder =>
+    {
+        builder.AllowAnyOrigin()
+               .AllowAnyMethod()
+               .AllowAnyHeader();
+    });
+});
 
 // Configure Swagger
 builder.Services.AddSwaggerGen(options =>
@@ -38,8 +50,9 @@ builder.Services.AddSwaggerGen(options =>
         Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
         Name = "Authorization",
         In = ParameterLocation.Header,
-        Type = SecuritySchemeType.ApiKey,
-        Scheme = "Bearer"
+        Type = SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT"
     });
 
     options.AddSecurityRequirement(new OpenApiSecurityRequirement
@@ -82,11 +95,13 @@ builder.Services.AddIdentity<User, IdentityRole>(options =>
 // Configure JWT Authentication
 builder.Services.AddAuthentication(options =>
 {
-    options.DefaultAuthenticateScheme = "Bearer";
-    options.DefaultChallengeScheme = "Bearer";
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
 })
 .AddJwtBearer(options =>
 {
+    options.RequireHttpsMetadata = false; // Set to true in production
+    options.SaveToken = true;
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,
@@ -96,7 +111,8 @@ builder.Services.AddAuthentication(options =>
         ValidIssuer = builder.Configuration["Jwt:Issuer"],
         ValidAudience = builder.Configuration["Jwt:Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
+            Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
+        ClockSkew = TimeSpan.Zero
     };
 });
 
@@ -125,6 +141,10 @@ app.UseHttpsRedirection();
 // Add error handling middleware
 app.UseMiddleware<ErrorHandlingMiddleware>();
 
+// Enable CORS
+app.UseCors();
+
+// Important: Authentication must come before Authorization
 app.UseAuthentication();
 app.UseAuthorization();
 

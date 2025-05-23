@@ -41,9 +41,16 @@ public class AuthController : ControllerBase
             return BadRequest(validationResult.Errors);
         }
 
+        // Check if user already exists
+        var existingUser = await _userManager.FindByEmailAsync(model.Email);
+        if (existingUser != null)
+        {
+            return BadRequest(new { message = "User with this email already exists" });
+        }
+
         var user = new User
         {
-            UserName = model.Email,
+            UserName = model.UserName, // Use the provided username
             Email = model.Email,
             FirstName = model.FirstName,
             LastName = model.LastName,
@@ -53,7 +60,8 @@ public class AuthController : ControllerBase
         var result = await _userManager.CreateAsync(user, model.Password);
         if (!result.Succeeded)
         {
-            return BadRequest(result.Errors);
+            var errors = result.Errors.Select(e => e.Description);
+            return BadRequest(new { message = "Registration failed", errors });
         }
 
         return Ok(new { message = "User registered successfully" });
@@ -68,7 +76,14 @@ public class AuthController : ControllerBase
             return BadRequest(validationResult.Errors);
         }
 
-        var user = await _userManager.FindByNameAsync(model.UserName);
+        // Try to find user by email first
+        var user = await _userManager.FindByEmailAsync(model.UserName);
+        if (user == null)
+        {
+            // If not found by email, try username
+            user = await _userManager.FindByNameAsync(model.UserName);
+        }
+
         if (user == null)
         {
             return Unauthorized(new { message = "Invalid email or password" });
@@ -84,7 +99,14 @@ public class AuthController : ControllerBase
         await _userManager.UpdateAsync(user);
 
         var token = GenerateJwtToken(user);
-        return Ok(new { token });
+        return Ok(new { 
+            token,
+            user = new {
+                id = user.Id,
+                email = user.Email,
+                userName = user.UserName
+            }
+        });
     }
 
     [HttpGet("profile")]
@@ -115,11 +137,14 @@ public class AuthController : ControllerBase
             throw new ArgumentException("Invalid user data for token generation");
         }
 
-        var claims = new[]
+        var claims = new List<Claim>
         {
+            new Claim(ClaimTypes.NameIdentifier, user.Id),
+            new Claim(ClaimTypes.Name, user.UserName ?? string.Empty),
+            new Claim(ClaimTypes.Email, user.Email),
             new Claim(JwtRegisteredClaimNames.Sub, user.Id),
             new Claim(JwtRegisteredClaimNames.Email, user.Email),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
